@@ -61,7 +61,7 @@ impl SasLogValidatior {
 
     fn is_row_pass(&self, row: &str) -> bool {
         for target in TARGETS.data.iter() {
-            if row.contains(target) {
+            if row.to_uppercase().contains(target) {
                 // handle situation "上次修改时间" to pass validation
                 if target.eq("修改") && row.trim().starts_with("上次修改时间") {
                     continue;
