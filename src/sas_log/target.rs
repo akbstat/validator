@@ -1,9 +1,13 @@
 use serde::Deserialize;
 use std::{fs, path::Path};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct TargetConfig {
-    pub data: Vec<String>,
+    pub target: Vec<String>,
+    pub target_pattern: Vec<String>,
+    pub white_list: Vec<String>,
+    pub white_list_pattern: Vec<String>,
 }
 
 impl TargetConfig {

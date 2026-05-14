@@ -4,6 +4,8 @@ use super::{
 };
 use crate::result::ReportResult;
 use lazy_static::lazy_static;
+use regex::Regex;
+use serde::Deserialize;
 use std::{env, fs, path::Path};
 
 lazy_static! {
@@ -11,11 +13,68 @@ lazy_static! {
         TargetConfig::new(&format!(r"{}\log.json", env::var("MK_VALIDATOR").unwrap())).unwrap();
 }
 
-pub struct SasLogValidatior {}
+pub struct SasLogValidatior {
+    target_list: Vec<String>,
+    white_list: Vec<String>,
+    target_pattern: Vec<Regex>,
+    white_list_pattern: Vec<Regex>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalLogPattern {
+    white_list: Vec<String>,
+    issue: Vec<String>,
+}
 
 impl SasLogValidatior {
-    pub fn new() -> Self {
-        SasLogValidatior {}
+    pub fn new(external: Option<ExternalLogPattern>) -> Self {
+        let mut target_pattern = TARGETS
+            .target_pattern
+            .clone()
+            .into_iter()
+            .map(|s| Regex::new(&s.to_lowercase()))
+            .filter(|r| r.is_ok())
+            .into_iter()
+            .map(|r| r.unwrap())
+            .collect::<Vec<Regex>>();
+        let mut white_list_pattern = TARGETS
+            .white_list_pattern
+            .clone()
+            .into_iter()
+            .map(|s| Regex::new(&s.to_lowercase()))
+            .filter(|r| r.is_ok())
+            .map(|r| r.unwrap())
+            .collect::<Vec<Regex>>();
+        if let Some(external) = external {
+            let ExternalLogPattern { white_list, issue } = external;
+            white_list.into_iter().for_each(|p| {
+                if let Ok(re) = Regex::new(&p.to_lowercase()) {
+                    white_list_pattern.push(re);
+                }
+            });
+            issue.into_iter().for_each(|p| {
+                if let Ok(re) = Regex::new(&p.to_lowercase()) {
+                    target_pattern.push(re);
+                }
+            });
+        }
+        SasLogValidatior {
+            target_list: TARGETS
+                .target
+                .clone()
+                .into_iter()
+                .map(|s| s.to_lowercase())
+                .collect(),
+            target_pattern,
+            white_list: TARGETS
+                .white_list
+                .clone()
+                .into_iter()
+                .map(|s| s.to_lowercase())
+                .collect(),
+            white_list_pattern,
+        }
     }
     pub fn validate<P: AsRef<Path>>(&self, filepath: P) -> anyhow::Result<LogResult> {
         let bytes = fs::read(filepath)?;
@@ -60,16 +119,35 @@ impl SasLogValidatior {
     }
 
     fn is_row_pass(&self, row: &str) -> bool {
-        for target in TARGETS.data.iter() {
-            if row.to_uppercase().contains(target) {
-                // handle situation "上次修改时间" to pass validation
-                if target.eq("修改") && row.trim().starts_with("上次修改时间") {
-                    continue;
-                }
+        let row = row.to_lowercase();
+        if self.is_row_in_white_list(&row) {
+            return true;
+        }
+        for target in self.target_list.iter() {
+            if row.contains(target) {
+                return false;
+            }
+        }
+        for pattern in self.target_pattern.iter() {
+            if let Some(_) = pattern.find(&row) {
                 return false;
             }
         }
         true
+    }
+
+    fn is_row_in_white_list(&self, row: &str) -> bool {
+        for target in self.white_list.iter() {
+            if row.contains(target) {
+                return true;
+            }
+        }
+        for pattern in self.white_list_pattern.iter() {
+            if let Some(_) = pattern.find(row) {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -80,8 +158,17 @@ mod tests {
     use super::*;
     #[test]
     fn test_sas_log_validator() -> anyhow::Result<()> {
-        let root = Path::new(r"D:\Studies\ak119\104\stats\dryrun\product\program\sdtm");
-        let validator = SasLogValidatior::new();
+        unsafe {
+            env::set_var(
+                "MK_VALIDATOR",
+                r"D:\projects\rusty\mobius_kit\.config\validator",
+            );
+        }
+        let root = Path::new(r"D:\Studies\ak139\101\stats\draft\validation\program\sdtm");
+        let validator = SasLogValidatior::new(Some(ExternalLogPattern {
+            white_list: vec!["does not exist.".into()],
+            issue: vec![],
+        }));
         for entry in fs::read_dir(root)? {
             let entry = entry?;
             if entry.file_type()?.is_dir()
@@ -91,7 +178,13 @@ mod tests {
             }
             let filepath = entry.path();
             let result = validator.validate(&filepath);
-            assert!(result.is_ok())
+            assert!(result.is_ok());
+            let result = result.unwrap();
+            result.details.iter().for_each(|row| {
+                if !row.pass {
+                    dbg!(row);
+                }
+            });
         }
         Ok(())
     }

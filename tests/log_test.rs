@@ -8,7 +8,7 @@ fn test_log() -> anyhow::Result<()> {
         r"D:\projects\rusty\mobius_kit\.config\validator",
     );
 
-    let validator = SasLogValidatior::new();
+    let validator = SasLogValidatior::new(None);
     let filepath = Path::new(r"D:\Studies\ak119\104\stats\dryrun\product\program\sdtm\ae.log");
     let result = validator.validate(&filepath);
     assert!(result.is_ok());

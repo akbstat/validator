@@ -10,3 +10,4 @@ lazy_static = "1.5.0"
 anyhow = "1.0.89"
 serde = { version = "1.0.216", features = ["derive"] }
 serde_json = "1.0.134"
+regex = "1.12.2"
